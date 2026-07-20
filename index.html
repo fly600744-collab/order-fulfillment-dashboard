@@ -1140,6 +1140,7 @@ const TOTAL_ORDER_MERGE_KEY='total_order_merge_by_number';
 const IDB_DB_NAME='order_fulfillment_dashboard';
 const IDB_STORE_NAME='dashboard_data';
 const IDB_DATA_KEY=STORAGE_KEY;
+const LOCAL_STORAGE_MAX_ROWS=3000;
 
 let orders=[];
 let filterState={
@@ -1169,6 +1170,7 @@ let storagePersistenceAvailable = true;
 let indexedDbSavePromise = Promise.resolve();
 let pendingIndexedDbSave = null;
 let indexedDbSaveWorkerActive = false;
+let dataDirty = false;
 
 const SORT_COLS=[
   {label:'客户/渠道',key:'客户'},
@@ -1227,7 +1229,8 @@ async function loadDataIndexedDB(){
 }
 
 function createStorageRecord(savedAt=Date.now()){
-  return {version:DATA_VERSION,savedAt,orders:orders.map(o=>({...o}))};
+  // IndexedDB.put 会立即执行结构化克隆，无需在这里再次复制 9 万个对象。
+  return {version:DATA_VERSION,savedAt,orders};
 }
 
 function parseStorageRecord(value){
@@ -1250,7 +1253,9 @@ function scheduleIndexedDbSave(savedAt,localSaved){
         await saveDataIndexedDB(createStorageRecord(request.savedAt));
         anySuccess=true;
         storagePersistenceAvailable=true;
+        if(!pendingIndexedDbSave)dataDirty=false;
       }catch(e){
+        dataDirty=true;
         storagePersistenceAvailable=!!request.localSaved;
         console.warn('IndexedDB save failed:',e);
       }
@@ -1264,18 +1269,25 @@ function saveData(silent) {
   silent = (silent === undefined) ? false : silent;
   let localSaved=false;
   const savedAt=Date.now();
-  try {
-    const json = JSON.stringify({version:DATA_VERSION,savedAt,orders});
-    localStorage.setItem(STORAGE_KEY, json);
-    const verify = localStorage.getItem(STORAGE_KEY);
-    if (!verify) throw new Error('写入后读取为空');
-    localSaved=true;
-  } catch (e) {
-    console.warn('localStorage unavailable, using IndexedDB:', e);
+  dataDirty=true;
+  // localStorage 容量通常只有数 MB。大数据强行 JSON.stringify 不但必然超限，
+  // 还会长时间阻塞页面；超过阈值后直接交给 IndexedDB。
+  if(orders.length<=LOCAL_STORAGE_MAX_ROWS){
+    try {
+      const json = JSON.stringify({version:DATA_VERSION,savedAt,orders});
+      localStorage.setItem(STORAGE_KEY, json);
+      const verify = localStorage.getItem(STORAGE_KEY);
+      if (!verify) throw new Error('写入后读取为空');
+      localSaved=true;
+    } catch (e) {
+      console.warn('localStorage unavailable, using IndexedDB:', e);
+    }
   }
   const canUseIndexedDb=typeof indexedDB!=='undefined';
   if(canUseIndexedDb){
     scheduleIndexedDbSave(savedAt,localSaved);
+  }else if(localSaved){
+    dataDirty=false;
   }
   storagePersistenceAvailable=localSaved||canUseIndexedDb;
   return true;
@@ -2950,28 +2962,19 @@ function excelDateToStr(serial) {
   return String(serial);
 }
 
-function importFile(e){
-  const file=e.target.files[0];if(!file)return;
-  if(typeof XLSX==='undefined'){alert('XLSX 库未加载，请检查网络后刷新重试');return;}
-  showLoadingMask('正在解析文件…');
-  const reader=new FileReader();
-  reader.onload=async function(ev){
-    try{
-      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
-      const sheetCandidates=wb.SheetNames.map((sheetName,sheetIndex)=>{
-        const ws=wb.Sheets[sheetName];
-        const rows=XLSX.utils.sheet_to_json(ws,{defval:''}).map(normalizeImportRow);
-        const validRows=rows.filter(r=>{
-          const orderId=pk(r,['单据编号','订单编号']);
-          const sku=pk(r,['商家编码','商家代码','商品编码','SKU编码','商家编号','商品代码','商品名称']);
-          return String(orderId).trim()!==''&&String(sku).trim()!=='';
-        });
-        return {sheetName,sheetIndex,rows:validRows};
-      }).filter(item=>item.rows.length>0).sort((a,b)=>b.rows.length-a.rows.length||a.sheetIndex-b.sheetIndex);
-      const selectedSheet=sheetCandidates[0];
-      const raw=selectedSheet?selectedSheet.rows:[];
-      if(!raw.length){hideLoadingMask();alert('文件无有效数据');return;}
-      const newOrders=raw.map(r=>({
+function yieldToBrowser(){
+  // 不依赖 requestAnimationFrame，切换到其他标签页时也能继续处理。
+  return new Promise(resolve=>setTimeout(resolve,0));
+}
+
+async function convertImportRowsInChunks(raw){
+  const result=[];
+  const chunkSize=3000;
+  for(let start=0;start<raw.length;start+=chunkSize){
+    const end=Math.min(start+chunkSize,raw.length);
+    for(let i=start;i<end;i++){
+      const r=raw[i];
+      const order=normalizeOrder({
         客户: pk(r, ['客户','订单来源']),
         商家编码: pk(r, ['商家编码','商家代码','商品编码','SKU编码','商家编号','商品代码']),
         单据编号: pk(r, ['单据编号','订单编号']),
@@ -2983,12 +2986,48 @@ function importFile(e){
         发货仓: pk(r, ['发货仓','发货仓库']),
         支付时间: excelDateToStr(pk(r, ['支付时间','支付日期','付款日期','下单支付时间'])),
         出库日期: excelDateToStr(pk(r, ['出库日期','出库时间','发货日期','发货时间']))
-      })).filter(o=>String(o.单据编号||'').trim()&&(String(o.商家编码||'').trim()||String(o.商品名称||'').trim()));
-      orders = newOrders.map(normalizeOrder);
+      });
+      if(String(order.单据编号||'').trim()&&(String(order.商家编码||'').trim()||String(order.商品名称||'').trim()))result.push(order);
+    }
+    showLoadingMask(`正在整理数据… ${Math.round(end/raw.length*100)}%`);
+    await yieldToBrowser();
+  }
+  return result;
+}
+
+function importFile(e){
+  const file=e.target.files[0];if(!file)return;
+  if(typeof XLSX==='undefined'){alert('XLSX 库未加载，请检查网络后刷新重试');return;}
+  showLoadingMask('正在解析文件…');
+  const reader=new FileReader();
+  reader.onload=async function(ev){
+    try{
+      const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+      showLoadingMask('正在识别有效工作表…');
+      await yieldToBrowser();
+      let selectedSheet=null;
+      for(let sheetIndex=0;sheetIndex<wb.SheetNames.length;sheetIndex++){
+        const sheetName=wb.SheetNames[sheetIndex];
+        const ws=wb.Sheets[sheetName];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:''}).map(normalizeImportRow);
+        const validRows=rows.filter(r=>{
+          const orderId=pk(r,['单据编号','订单编号']);
+          const sku=pk(r,['商家编码','商家代码','商品编码','SKU编码','商家编号','商品代码','商品名称']);
+          return String(orderId).trim()!==''&&String(sku).trim()!=='';
+        });
+        if(validRows.length&&(!selectedSheet||validRows.length>selectedSheet.rows.length))selectedSheet={sheetName,sheetIndex,rows:validRows};
+        showLoadingMask(`正在识别工作表… ${sheetIndex+1}/${wb.SheetNames.length}`);
+        await yieldToBrowser();
+      }
+      const raw=selectedSheet?selectedSheet.rows:[];
+      if(!raw.length){hideLoadingMask();alert('文件无有效数据');return;}
+      const newOrders=await convertImportRowsInChunks(raw);
+      orders = newOrders;
       resetFilters();
-      const ok = saveData(false);
-      await indexedDbSavePromise;
-      if(!ok){hideLoadingMask();alert('保存到本地失败，请检查存储空间');return;}
+      showLoadingMask('正在生成看板…');
+      await yieldToBrowser();
+      saveData(false);
+      const backgroundSave=indexedDbSavePromise;
       updateTimeDisplay();
       buildFilterDropdowns();
       currentPage=1;
@@ -2998,9 +3037,14 @@ function importFile(e){
       resetTotalOrderToActual();
       const uniqueOrderCount=countDistinctOrders(orders);
       const sheetNotice=wb.SheetNames.length>1?`\n已从工作表“${selectedSheet.sheetName}”导入，未混入其他汇总或副本工作表。`:'';
-      alert(storagePersistenceAvailable
+      // 看板先可用，IndexedDB 在后台完成持久化，不再用遮罩阻塞用户。
+      document.getElementById('updateTime').textContent='数据已显示 · 正在后台保存';
+      await yieldToBrowser();
+      const indexedSaved=await backgroundSave;
+      updateTimeDisplay();
+      alert(indexedSaved||storagePersistenceAvailable
         ? `✅ 导入成功：${orders.length} 条明细，${uniqueOrderCount} 个去重订单（已自动保存）${sheetNotice}`
-        : `⚠ 导入成功：${orders.length} 条明细，${uniqueOrderCount} 个去重订单。当前浏览器不允许本地持久保存，请在关闭或刷新前导出 Excel。${sheetNotice}`);
+        : `⚠ 导入成功：${orders.length} 条明细，${uniqueOrderCount} 个去重订单。浏览器保存失败，请先导出 Excel 备份。${sheetNotice}`);
     }catch(err){hideLoadingMask();alert('导入失败：'+err.message);console.error(err);}
   };
   reader.onerror=function(){hideLoadingMask();alert('文件读取失败，请重试');};
@@ -3096,13 +3140,14 @@ function hideLoadingMask() {
 }
 
 setInterval(function(){
-  if(orders && orders.length > 0){
+  // 正常编辑时已经即时保存；定时器只重试之前失败的保存，避免反复写入 9 万条数据。
+  if(dataDirty && !indexedDbSaveWorkerActive && orders && orders.length > 0){
     saveData(true);
   }
 }, 30000);
 
 window.addEventListener('beforeunload', function(){
-  if(orders && orders.length > 0){
+  if(dataDirty && !indexedDbSaveWorkerActive && orders && orders.length > 0){
     saveData(true);
   }
 });
