@@ -111,6 +111,18 @@ body{
 .total-order-wrap .total-label{
   color:var(--text-muted);
 }
+.total-order-merge{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  margin-left:5px;
+  color:var(--text-muted);
+  font-size:11px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.total-order-merge input{margin:0;accent-color:var(--primary);cursor:pointer}
+.total-order-wrap input:disabled{background:#F5F6FA;color:var(--text-secondary);cursor:not-allowed}
 
 /* ========== Buttons ========== */
 .btn{
@@ -343,7 +355,6 @@ body{
 }
 .chart-card:hover::before{opacity:.8;transform:translateX(28%) rotate(8deg)}
 .chart-card > *{position:relative;z-index:1}
-}
 .chart-card h3{
   font-size:14px;font-weight:600;color:var(--text-primary);
   margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;
@@ -354,6 +365,11 @@ body{
   font-size:12px;text-align:center;outline:none;font-family:inherit;
 }
 .chart-card h3 .extra input:focus{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-light)}
+.alert-card-title{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;margin-bottom:16px}
+.alert-card-title h3{display:block;margin:0;min-width:0}
+.alert-card-title .extra{margin-left:auto;white-space:nowrap;flex-shrink:0;font-weight:400;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:4px}
+.alert-card-title .extra input{width:44px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;text-align:center;outline:none;font-family:inherit}
+.alert-card-title .extra input:focus{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary-light)}
 .chart-wrap{position:relative;height:320px}
 
 /* Channel bars */
@@ -889,6 +905,7 @@ table.main-table{
     <span class="total-order-wrap">
       <span class="total-label">总订单数：</span>
       <input type="number" id="totalOrderInput" min="0" step="1" onchange="onTotalOrderChange()">
+      <label class="total-order-merge" title="勾选后，相同单据编号在总订单数中仅统计一次"><input type="checkbox" id="totalOrderMergeCheck" onchange="toggleTotalOrderMerge()">合并同单号</label>
     </span>
   </div>
   <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="importFile(event)">
@@ -928,7 +945,7 @@ table.main-table{
         <div class="multi-select-panel"></div>
       </div>
     </div>
-    <div class="filter-row"><span class="filter-label">30天订单：</span>
+    <div class="filter-row"><span class="filter-label">60天订单：</span>
       <div class="multi-select" id="orderFreqMultiSelect">
         <div class="multi-select-btn" onclick="event.stopPropagation();toggleDropdown('orderFreqMultiSelect')">
           <span class="multi-select-text">全部</span><i class="fa-solid fa-chevron-down ms-arrow"></i>
@@ -978,15 +995,15 @@ table.main-table{
 
 <!-- ====== Charts Row 1 ====== -->
 <div class="charts-row">
-  <div class="chart-card"><h3>各渠道晚交期分布</h3><div class="channel-bar-list" id="channelBarList"></div></div>
+  <div class="chart-card"><h3>各渠道晚交期订单占比</h3><div class="channel-bar-list" id="channelBarList"></div></div>
   <div class="chart-card"><h3>渠道占比</h3><div class="chart-wrap"><div id="channelPieChart" style="width:100%;height:100%;"></div></div></div>
 </div>
 
 <!-- ====== Charts Row 2 ====== -->
 <div class="charts-row">
   <div class="chart-card"><h3>晚交期原因分析</h3><div class="chart-wrap"><div id="reasonChart" style="width:100%;height:300px;"></div></div><div id="reasonSummary" style="display:none"></div></div>
-  <div class="chart-card">
-    <h3>备货不足预警 <span class="extra">TOP <input type="number" id="alertTopN" value="0" min="0" max="9999" onchange="refreshAll()"> （0表示全部）</span></h3>
+  <div class="chart-card alert-card">
+    <div class="alert-card-title"><h3>备货不足预警</h3><span class="extra">TOP <input type="number" id="alertTopN" value="10" min="0" max="9999" onchange="refreshAll()"> （0表示全部）</span></div>
     <div style="overflow:auto;max-height:380px">
       <div id="alertInfo" class="alert-info" style="display:none"></div>
       <table class="alert-table" id="alertTable"><thead id="alertHead"></thead><tbody id="alertBody"></tbody></table>
@@ -1076,7 +1093,7 @@ table.main-table{
     <div class="file-drop-area" onclick="document.getElementById('fileInput').click()">
       <i class="fa-solid fa-cloud-arrow-up" style="font-size:20px;display:block;margin-bottom:4px"></i>
       点击导入 Excel（.xlsx .xls .csv），或直接编辑下方表格
-      <div class="hint">必填字段：客户、商家编码、单据编号、商品名称、销售数量、晚交期原因、30天内单量(次)、30天SKU销售数量、出库日期、支付时间</div>
+      <div class="hint">必填字段：客户、商家编码、单据编号、商品名称、销售数量、晚交期原因、60天内单量(次)、60天SKU销售数量、出库日期、支付时间</div>
     </div>
     <div style="margin-bottom:8px;font-size:12px;color:var(--text-secondary);background:var(--primary-light);padding:4px 10px;border-radius:4px;display:flex;justify-content:space-between;align-items:center;">
       <span><i class="fa-solid fa-list"></i> 当前数据条数：<strong id="rowCountDisplay">0</strong> 条</span>
@@ -1092,7 +1109,7 @@ table.main-table{
     </div>
 
     <div style="overflow:auto;max-height:400px">
-      <table class="input-table" id="inputTable"><thead><tr><th>客户</th><th>商家编码</th><th>单据编号</th><th>商品名称</th><th>销售数量</th><th>晚交期原因</th><th>30天内单量(次)</th><th>30天SKU销售数量</th><th>出库日期</th><th>支付时间</th><th>操作</th></tr></thead><tbody id="inputBody"></tbody></table>
+      <table class="input-table" id="inputTable"><thead><tr><th>客户</th><th>商家编码</th><th>单据编号</th><th>商品名称</th><th>销售数量</th><th>晚交期原因</th><th>60天内单量(次)</th><th>60天SKU销售数量</th><th>出库日期</th><th>支付时间</th><th>操作</th></tr></thead><tbody id="inputBody"></tbody></table>
     </div>
     <div class="inline-actions">
       <button class="btn btn-primary btn-sm" onclick="addEmptyRow()"><i class="fa-solid fa-plus"></i> 添加</button>
@@ -1119,6 +1136,7 @@ const DATA_VERSION='v12';
 const STORAGE_KEY='order_dashboard_'+DATA_VERSION;
 const LABELS_KEY='dashboard_card_labels';
 const TOTAL_ORDER_KEY='total_order_override';
+const TOTAL_ORDER_MERGE_KEY='total_order_merge_by_number';
 
 let orders=[];
 let filterState={
@@ -1154,7 +1172,7 @@ const SORT_COLS=[
   {label:'数量',key:'销售数量',num:true},
   {label:'晚交期原因',key:'晚交期原因'},
   {label:'备货缺口',key:'gap',num:true},
-  {label:'30天SKU销量',key:'30天SKU销售数量',num:true},
+  {label:'60天SKU销量',key:'30天SKU销售数量',num:true},
   {label:'支付时间',key:'支付时间'},
   {label:'出库日期',key:'出库日期'},
   {label:'耗时天数',key:'耗时天数',num:true},
@@ -1282,7 +1300,27 @@ function loadTotalOrderOverride(){
 function saveTotalOrderOverride(val){
   try{localStorage.setItem(TOTAL_ORDER_KEY, String(val));}catch(e){storagePersistenceAvailable=false;}
 }
+function loadTotalOrderMerge(){
+  try{return localStorage.getItem(TOTAL_ORDER_MERGE_KEY)==='1';}catch(e){return false;}
+}
+function saveTotalOrderMerge(enabled){
+  try{localStorage.setItem(TOTAL_ORDER_MERGE_KEY, enabled?'1':'0');}catch(e){storagePersistenceAvailable=false;}
+}
+function isTotalOrderMergeEnabled(){
+  return !!document.getElementById('totalOrderMergeCheck')?.checked;
+}
+function getUniqueOrderNumberCount(){
+  const seen=new Set();
+  return orders.reduce((count,order,index)=>{
+    const number=String(order?.单据编号??'').trim();
+    const key=number || `__empty_order_${index}`;
+    if(seen.has(key)) return count;
+    seen.add(key);
+    return count+1;
+  },0);
+}
 function getTotalInput(){
+  if(isTotalOrderMergeEnabled()) return getUniqueOrderNumberCount();
   const input = document.getElementById('totalOrderInput');
   if(input){
     const val = parseInt(input.value);
@@ -1293,6 +1331,12 @@ function getTotalInput(){
 function syncTotalOrderInput(forceValue){
   const input = document.getElementById('totalOrderInput');
   if(!input) return;
+  if(isTotalOrderMergeEnabled()){
+    input.value=getUniqueOrderNumberCount();
+    input.disabled=true;
+    return;
+  }
+  input.disabled=false;
   if(forceValue !== undefined){
     input.value = forceValue;
     saveTotalOrderOverride(forceValue);
@@ -1306,6 +1350,7 @@ function syncTotalOrderInput(forceValue){
   }
 }
 function onTotalOrderChange(){
+  if(isTotalOrderMergeEnabled()) return;
   const input = document.getElementById('totalOrderInput');
   let val = parseInt(input.value);
   if(isNaN(val) || val < 0) val = 0;
@@ -1316,9 +1361,18 @@ function onTotalOrderChange(){
 function resetTotalOrderToActual(){
   const input = document.getElementById('totalOrderInput');
   if(input){
-    input.value = orders.length;
-    saveTotalOrderOverride(orders.length);
+    if(isTotalOrderMergeEnabled()){
+      syncTotalOrderInput();
+    }else{
+      input.value = orders.length;
+      saveTotalOrderOverride(orders.length);
+    }
   }
+}
+function toggleTotalOrderMerge(){
+  saveTotalOrderMerge(isTotalOrderMergeEnabled());
+  syncTotalOrderInput();
+  refreshAll();
 }
 
 function getOrderFreqLabel(o){const v=parseInt(o['30天内单量(次)'])||0;if(v===0)return'0次';if(v===1)return'1次';if(v<=5)return'2-5次';if(v<=10)return'6-10次';return'10+次';}
@@ -1339,13 +1393,13 @@ function calcDuration(o){
   return diff >= 0 ? diff : Infinity;
 }
 
-function getFiltered(){
+function getFiltered(options={}){
   return orders.filter(o=>{
     if(filterState.hideCustom){
       const code = String(o.商家编码 || '');
       if (code.startsWith('9')) return false;
     }
-    if(filterState.excludeTimely){
+    if(filterState.excludeTimely&&!options.includeTimely){
       const duration=calcDuration(o);
       // 无出库日期的订单仍需保留，便于跟踪待发货或异常订单。
       if(duration !== Infinity && duration <= 2) return false;
@@ -1379,19 +1433,56 @@ function getFiltered(){
     return true;
   });
 }
+function mergeOrdersByNumber(data){
+  const grouped=new Map();
+  data.forEach((order,index)=>{
+    const number=String(order?.单据编号??'').trim();
+    const key=number||`__empty_order_${index}`;
+    const quantity=parseInt(order.销售数量)||0;
+    const duration=calcDuration(order);
+    if(!grouped.has(key)){
+      grouped.set(key,{...order,销售数量:quantity,_mergeDuration:duration});
+      return;
+    }
+    const target=grouped.get(key);
+    target.销售数量=(parseInt(target.销售数量)||0)+quantity;
+    target['30天内单量(次)']=Math.max(parseInt(target['30天内单量(次)'])||0,parseInt(order['30天内单量(次)'])||0);
+    target['30天SKU销售数量']=Math.max(parseInt(target['30天SKU销售数量'])||0,parseInt(order['30天SKU销售数量'])||0);
+    // 同一订单多行商品明细时，用耗时最长的一行归类订单状态，销量仍累计。
+    if(duration>target._mergeDuration){
+      target.支付时间=order.支付时间;
+      target.出库日期=order.出库日期;
+      target.晚交期原因=order.晚交期原因||target.晚交期原因;
+      target.客户=order.客户||target.客户;
+      target.发货仓=order.发货仓||target.发货仓;
+      target._mergeDuration=duration;
+    }
+  });
+  return [...grouped.values()].map(order=>{delete order._mergeDuration;return order;});
+}
+
+function getOrderCountData(options={}){
+  const data=getFiltered(options);
+  return isTotalOrderMergeEnabled()?mergeOrdersByNumber(data):data;
+}
+
 function getAllVals(field){const s=new Set();orders.forEach(o=>s.add(o[field]||(field==='晚交期原因'?'未标注':'未知')));return [...s].sort();}
 function calcGap(order){const sales30=parseInt(order['30天SKU销售数量'])||0;const qty=parseInt(order.销售数量)||0;return sales30-qty;}
 
 function getDedupedSkuData(orders){
   const skuMap={};
-  orders.forEach(o=>{
+  orders.forEach((o,index)=>{
     const name=o.商品名称||'未知';
-    if(!skuMap[name])skuMap[name]={name,maxSkuSales:0,totalQty:0,count:0};
+    if(!skuMap[name])skuMap[name]={name,maxSkuSales:0,totalQty:0,count:0,orderIds:new Set()};
     const s30=parseInt(o['30天SKU销售数量'])||0;
     const qty=parseInt(o.销售数量)||0;
     if(s30>skuMap[name].maxSkuSales)skuMap[name].maxSkuSales=s30;
     skuMap[name].totalQty+=qty;
-    skuMap[name].count+=1;
+    if(isTotalOrderMergeEnabled()){
+      const orderId=String(o.单据编号??'').trim()||`__empty_order_${index}`;
+      skuMap[name].orderIds.add(orderId);
+      skuMap[name].count=skuMap[name].orderIds.size;
+    }else skuMap[name].count+=1;
   });
   return Object.values(skuMap);
 }
@@ -1508,7 +1599,9 @@ function resetFilters(){
 
 function updateFilterSummary(){
   const d=getFiltered();
-  document.getElementById('filterSummary').textContent=d.length===orders.length?`${orders.length} 条全部`:`${d.length} / ${orders.length} 条`;
+  const countData=getOrderCountData();
+  const allCount=isTotalOrderMergeEnabled()?getUniqueOrderNumberCount():orders.length;
+  document.getElementById('filterSummary').textContent=countData.length===allCount?`${allCount} 条全部`:`${countData.length} / ${allCount} 条`;
 }
 
 function toggleHideCustom(){
@@ -1668,7 +1761,6 @@ function refreshAll(){
   try{renderTable();renderPagination();}catch(e){console.error('renderTable:',e);}
   try{updateFilterSummary();}catch(e){console.error('updateFilterSummary:',e);}
 }
-function getTotalInput(){return parseInt(document.getElementById('totalOrderInput').value)||0;}
 function getTopN(){
   const val = parseInt(document.getElementById('alertTopN').value);
   return isNaN(val) || val < 0 ? 0 : val;
@@ -1677,8 +1769,9 @@ function getCriticalN(){return parseInt(document.getElementById('criticalTopN').
 
 function renderMetrics(){
   const d=getFiltered();
+  const orderData=getOrderCountData();
   const deduped=getDedupedSkuData(d);
-  const total=d.length,totalQty=d.reduce((s,o)=>s+(parseInt(o.销售数量)||0),0);
+  const total=orderData.length,totalQty=d.reduce((s,o)=>s+(parseInt(o.销售数量)||0),0);
   const skuSet=new Set(d.map(o=>o.商品名称).filter(Boolean));
   const totalIn=getTotalInput();
   const pct=totalIn>0?(total/totalIn*100).toFixed(1):'—';
@@ -1730,7 +1823,7 @@ function renderMetrics(){
     <div class="stat-card">
       <span class="stat-label" data-index="5">${esc(cardLabels[5]||labels[5])} <i class="fa-regular fa-pen-to-square edit-icon"></i></span>
       <span class="stat-value">${highSalesShortage}</span>
-      <span class="stat-sub">30天销量≥100</span>
+      <span class="stat-sub">60天销量≥100</span>
     </div>
   `;
   document.getElementById('metricsGrid').innerHTML = html;
@@ -1752,20 +1845,30 @@ function renderMetrics(){
 }
 
 function renderChannelBars(){
-  const d=getFiltered();const map={};d.forEach(o=>{const k=o.客户||'未知';map[k]=(map[k]||0)+1});
-  const total=d.length||1;
-  const entries=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  // 分母始终采用各渠道全部订单，避免勾选“仅统计延期/缺货订单”后比例都变为 100%。
+  const allOrders=getOrderCountData({includeTimely:true});
+  const map={};
+  allOrders.forEach(o=>{
+    const channel=o.客户||'未知';
+    if(!map[channel])map[channel]={total:0,late:0};
+    map[channel].total+=1;
+    const duration=calcDuration(o);
+    if(duration>2&&duration!==Infinity)map[channel].late+=1;
+  });
+  const entries=Object.entries(map)
+    .map(([channel,stat])=>({channel,...stat,pct:stat.total?stat.late/stat.total*100:0}))
+    .sort((a,b)=>b.pct-a.pct||b.late-a.late);
   const cols=['#4F6EF7','#10B981','#F59E0B','#8B5CF6','#14B8A6','#EC4899','#F97316','#DC2626'];
-  document.getElementById('channelBarList').innerHTML=entries.map(([k,v],i)=>{
-    const pct=(v/total*100).toFixed(1);
+  document.getElementById('channelBarList').innerHTML=entries.map(({channel,total,late,pct:rawPct},i)=>{
+    const pct=rawPct.toFixed(1);
     const pctOut=Number(pct)<12?`<span class="channel-bar-pct-out" style="left:calc(${pct}% + 8px)">${pct}%</span>`:'';
     const pctIn=Number(pct)>=12?`${pct}%`:'';
-    return`<div class="channel-bar-item"><span class="channel-bar-label">${esc(k)}</span><div class="channel-bar-track"><div class="channel-bar-fill" style="width:${pct}%;background:${cols[i%cols.length]}">${pctIn}</div>${pctOut}</div><span class="channel-bar-count">${v}</span></div>`;
+    return`<div class="channel-bar-item"><span class="channel-bar-label">${esc(channel)}</span><div class="channel-bar-track"><div class="channel-bar-fill" style="width:${pct}%;background:${cols[i%cols.length]}">${pctIn}</div>${pctOut}</div><span class="channel-bar-count">${late} / ${total}</span></div>`;
   }).join('');
 }
 
 function renderPie() {
-  const d = getFiltered();
+  const d = getOrderCountData();
   const map = {};
   d.forEach(o => { const k = o.客户 || '未知'; map[k] = (map[k] || 0) + 1; });
   let entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
@@ -1866,7 +1969,7 @@ function renderPie() {
 }
 
 function renderReasons(){
-  const d=getFiltered();const map={};d.forEach(o=>{const k=o.晚交期原因||'未标注';map[k]=(map[k]||0)+1});
+  const d=getOrderCountData();const map={};d.forEach(o=>{const k=o.晚交期原因||'未标注';map[k]=(map[k]||0)+1});
   const total=d.length||1;
   const entries=Object.entries(map).sort((a,b)=>b[1]-a[1]);
   const names=entries.map(e=>e[0]);
@@ -1967,7 +2070,7 @@ function renderAlertTable(){
 
   const headHtml = `<tr>
     <th onclick="sortAlert('name')">SKU名称 ${alertSort.key==='name'?(alertSort.dir==='asc'?'▲':'▼'):'↕'}</th>
-    <th onclick="sortAlert('sales30')">30天销量 ${alertSort.key==='sales30'?(alertSort.dir==='asc'?'▲':'▼'):'↕'}</th>
+    <th onclick="sortAlert('sales30')">60天销量 ${alertSort.key==='sales30'?(alertSort.dir==='asc'?'▲':'▼'):'↕'}</th>
     <th onclick="sortAlert('count')">缺货笔数 ${alertSort.key==='count'?(alertSort.dir==='asc'?'▲':'▼'):'↕'}</th>
     <th onclick="sortAlert('qty')">缺货数量 ${alertSort.key==='qty'?(alertSort.dir==='asc'?'▲':'▼'):'↕'}</th>
     <th onclick="sortAlert('gap')">备货缺口 ${alertSort.key==='gap'?(alertSort.dir==='asc'?'▲':'▼'):'↕'}</th>
@@ -2003,7 +2106,7 @@ function renderWarehouse(){
   let oldChart = Chart.getChart(canvas);
   if (oldChart) { oldChart.destroy(); }
 
-  const d = getFiltered();
+  const d = getOrderCountData();
   if (d.length === 0) {
     new Chart(canvas, {
       type: 'bar',
@@ -2590,8 +2693,8 @@ const INPUT_FIELDS = [
   {key:'商品名称', label:'商品名称'},
   {key:'销售数量', label:'销售数量'},
   {key:'晚交期原因', label:'晚交期原因'},
-  {key:'30天内单量(次)', label:'30天内单量(次)'},
-  {key:'30天SKU销售数量', label:'30天SKU销售数量'},
+  {key:'30天内单量(次)', label:'60天内单量(次)'},
+  {key:'30天SKU销售数量', label:'60天SKU销售数量'},
   {key:'出库日期', label:'出库日期'},
   {key:'支付时间', label:'支付时间'}
 ];
@@ -2680,7 +2783,9 @@ function syncFromTable(){
   saveData(true);
   updateRowCountDisplay();
   const input = document.getElementById('totalOrderInput');
-  if(input){
+  if(isTotalOrderMergeEnabled()){
+    syncTotalOrderInput();
+  }else if(input){
     const curVal = parseInt(input.value);
     if(isNaN(curVal) || curVal <= 0){
       input.value = orders.length;
@@ -2786,8 +2891,8 @@ function exportExcel(){
     '商品名称':o.商品名称,
     '销售数量':o.销售数量,
     '晚交期原因':o.晚交期原因,
-    '30天内单量(次)':o['30天内单量(次)'],
-    '30天SKU销售数量':o['30天SKU销售数量'],
+    '60天内单量(次)':o['30天内单量(次)'],
+    '60天SKU销售数量':o['30天SKU销售数量'],
     '出库日期':o.出库日期||'',
     '支付时间':o.支付时间||'',
     '备货缺口':o.gap
@@ -2866,6 +2971,7 @@ window.addEventListener('beforeunload', function(){
 (function initDashboard(){
   try{
     loadData();
+    document.getElementById('totalOrderMergeCheck').checked=loadTotalOrderMerge();
     syncTotalOrderInput();
     try{renderInputTable();}catch(e){console.error('renderInputTable:',e);}
     try{buildFilterDropdowns();}catch(e){console.error('buildFilterDropdowns:',e);}
